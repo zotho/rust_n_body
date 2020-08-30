@@ -1,18 +1,18 @@
-extern crate rand;
+// extern crate rand;
 
-use std::time::{Instant};
+// use std::time::{Instant};
 use std::ops::{Add, Sub, Mul};
 use std::collections::vec_deque::VecDeque;
 
 use macroquad::*;
 use vecmath::*;
 use itertools::Itertools;
-use rand::Rng;
+// use rand::Rng;
 
 #[cfg(feature = "raindow_trail")]
 const COLORS: [Color; 25] = [LIGHTGRAY, GRAY, DARKGRAY, YELLOW, GOLD, ORANGE, PINK, RED, MAROON, GREEN, LIME, DARKGREEN, SKYBLUE, BLUE, DARKBLUE, PURPLE, VIOLET, DARKPURPLE, BEIGE, BROWN, DARKBROWN, WHITE, BLACK, BLANK, MAGENTA];
 
-const NANO_MULT: f64 = 1000000000.0;
+// const NANO_MULT: f64 = 1000000000.0;
 
 const DRAW_END: bool = true;
 const TRAIL_END: usize = 100;
@@ -24,7 +24,7 @@ const GRAV_POWER: i32 = 3;
 
 const MAX_INV_LEN: f64 = 1.0;
 
-const FIXED_DT: bool = true;
+// const FIXED_DT: bool = true;
 const DT: f64 = 0.004;
 
 fn lerp<T: Copy + Add<Output = T> + Mul<Output = T> + Sub<Output = T>>(v0: T, v1: T, t: T) -> T {
@@ -159,11 +159,11 @@ fn window_conf() -> Conf {
 
 #[macroquad::main(window_conf)]
 async fn main() {
-    let mut now = Instant::now();
-    let mut nanoseconds;
-    let mut min_fps = std::f64::INFINITY;
+    // let mut now = Instant::now();
+    // let mut nanoseconds;
+    // let mut min_fps = std::f64::INFINITY;
 
-    let mut rng = rand::thread_rng();
+    // let mut rng = rand::thread_rng();
 
     let (mut width, mut height) = (screen_width(), screen_height());
 
@@ -171,10 +171,10 @@ async fn main() {
     let mut mouse_pos_prev;
     let mut mouse_vel;
 
-    let mut n_init_on_step = 0;
+    // let mut n_init_on_step: usize = 0;
     
     let mut n_updates: usize = 100;
-    let mut time_speed = 1.0;
+    let mut time_speed: f64 = 1.0;
 
     let mut draw_debug = false;
 
@@ -197,11 +197,11 @@ async fn main() {
         width = screen_width();
         height = screen_height();
 
-        nanoseconds = now.elapsed().as_nanos() as f64;
-        let dt = nanoseconds / NANO_MULT;
-        let fps = NANO_MULT / nanoseconds;
-        min_fps = min_fps.min(fps);
-        now = Instant::now();
+        // nanoseconds = now.elapsed().as_nanos() as f64;
+        // let dt = nanoseconds / NANO_MULT;
+        // let fps = NANO_MULT / nanoseconds;
+        // min_fps = min_fps.min(fps);
+        // now = Instant::now();
 
         mouse_pos_prev = mouse_pos;
         mouse_pos = mouse_position();
@@ -211,6 +211,7 @@ async fn main() {
             (x - px, y - py)
         };
 
+        #[cfg(not(target_arch = "wasm32"))]
         if is_key_down(KeyCode::Escape) | is_key_down(KeyCode::Q) {
             break;
         }
@@ -226,12 +227,12 @@ async fn main() {
         if is_key_down(KeyCode::Up) {
             n_updates += 1;
         }
-        if is_key_down(KeyCode::Minus) {
-            n_init_on_step = 0.max(n_init_on_step - 1);
-        }
-        if is_key_down(KeyCode::Equal) {
-            n_init_on_step += 1;
-        }
+        // if is_key_down(KeyCode::Minus) {
+            // n_init_on_step = 0.max(n_init_on_step - 1);
+        // }
+        // if is_key_down(KeyCode::Equal) {
+            // n_init_on_step += 1;
+        // }
         if is_key_pressed(KeyCode::D) {
             draw_debug = !draw_debug;
         }
@@ -255,30 +256,30 @@ async fn main() {
             }
         }
 
-        let particles_now = Instant::now();
+        // let particles_now = Instant::now();
 
-        for _ in 0..n_init_on_step {
-            let mut p = Particle::new();
-            p.pos = [rng.gen_range(0.0, width as f64), rng.gen_range(0.0, height as f64)];
-            p.vel = [rng.gen_range(-200.0, 200.0), rng.gen_range(-200.0, 200.0)];
-            particles.push(p);
-        }
+        // for _ in 0..n_init_on_step {
+            // let mut p = Particle::new();
+            // p.pos = [rng.gen_range(0.0, width as f64), rng.gen_range(0.0, height as f64)];
+            // p.vel = [rng.gen_range(-200.0, 200.0), rng.gen_range(-200.0, 200.0)];
+            // particles.push(p);
+        // }
 
         clear_background(GRAY);
 
         // let (x, y) = mouse_pos;
         // draw_circle(x, y, 10.0, WHITE);
 
-        let mut particles_time_vel = 0;
+        // let mut particles_time_vel = 0;
         for _ in 0..n_updates {
             let current_dt;
-            if FIXED_DT {
+            // if FIXED_DT {
                 current_dt = DT;
-            } else {
-                current_dt = dt * time_speed / n_updates as f64;
-            }
+            // } else {
+                // current_dt = dt * time_speed / n_updates as f64;
+            // }
 
-            let particles_now_vel = Instant::now();
+            // let particles_now_vel = Instant::now();
             (0..particles.len()).tuple_combinations().for_each(|(i1, i2)| {
                 let (part1, part2) = particles.split_at_mut(i2);
                 let (p1, p2) = (&mut part1[i1], &mut part2[0]);
@@ -300,7 +301,7 @@ async fn main() {
                     p2.vel = vec2_add(p2.vel, vec2_scale(a, -current_dt * p1.mass));
                 }
             });
-            particles_time_vel += particles_now_vel.elapsed().as_micros();
+            // particles_time_vel += particles_now_vel.elapsed().as_micros();
     
             particles.retain(|p| {
                 let [x, y] = p.pos;
@@ -313,42 +314,42 @@ async fn main() {
             });
         }
 
-        let particles_now_retain = Instant::now();
+        // let particles_now_retain = Instant::now();
         let mut retain_count = 0;
         particles.iter_mut().for_each(|p| {
             retain_count += p.optimize_trail();
         });
-        let particles_time_retain = particles_now_retain.elapsed().as_micros();
+        // let particles_time_retain = particles_now_retain.elapsed().as_micros();
 
-        let particles_now_trail = Instant::now();
+        // let particles_now_trail = Instant::now();
         particles.iter().for_each(|p| {
             p.draw_trail();
         });
-        let particles_time_trail = particles_now_trail.elapsed().as_micros();
+        // let particles_time_trail = particles_now_trail.elapsed().as_micros();
 
-        let particles_now_draw = Instant::now();
+        // let particles_now_draw = Instant::now();
         particles.iter().for_each(|p| {
             p.draw();
         });
-        let particles_time_draw = particles_now_draw.elapsed().as_micros();
+        // let particles_time_draw = particles_now_draw.elapsed().as_micros();
 
-        let particles_time = particles_now.elapsed().as_micros();
+        // let particles_time = particles_now.elapsed().as_micros();
 
         if draw_debug {
             text_line(format!("N PARTICLES: {}", particles.len()).as_str(), 1);
-            text_line(format!("FPS: {:.1} (MIN: {:.1})", fps, min_fps).as_str(), 2);
-            text_line(format!("ALL TIME:  {:>7}", nanoseconds as u128 / 1000).as_str(), 3);
-            text_line(format!("PARTICLES: {:>7}", particles_time).as_str(), 4);
-            text_line(format!("         - {:>7} grav   ({:.3} part)", particles_time_vel, particles_time_vel as f32 / particles_time as f32).as_str(), 5);
-            text_line(format!("         - {:>7} retain ({:.3} part)", particles_time_retain, particles_time_retain as f32 / particles_time as f32).as_str(), 6);
-            text_line(format!("         - {:>7} trail  ({:.3} part)", particles_time_trail, particles_time_trail as f32 / particles_time as f32).as_str(), 7);
-            text_line(format!("         - {:>7} draw   ({:.3} part)", particles_time_draw, particles_time_draw as f32 / particles_time as f32).as_str(), 8);
-            text_line(format!("REST:      {:>7}", (nanoseconds as u128  / 1000).checked_sub(particles_time).unwrap_or(0)).as_str(), 9);
+            text_line(format!("FPS: {}", get_fps()).as_str(), 2);
+            // text_line(format!("ALL TIME:  {:>7}", nanoseconds as u128 / 1000).as_str(), 3);
+            // text_line(format!("PARTICLES: {:>7}", particles_now).as_str(), 4);
+            // text_line(format!("         - {:>7} grav   ({:.3} part)", particles_time_vel, particles_time_vel as f32 / particles_time as f32).as_str(), 5);
+            // text_line(format!("         - {:>7} retain ({:.3} part)", particles_time_retain, particles_time_retain as f32 / particles_time as f32).as_str(), 6);
+            // text_line(format!("         - {:>7} trail  ({:.3} part)", particles_time_trail, particles_time_trail as f32 / particles_time as f32).as_str(), 7);
+            // text_line(format!("         - {:>7} draw   ({:.3} part)", particles_time_draw, particles_time_draw as f32 / particles_time as f32).as_str(), 8);
+            // text_line(format!("REST:      {:>7}", (nanoseconds as u128  / 1000).checked_sub(particles_time).unwrap_or(0)).as_str(), 9);
             text_line(format!("MASSES: {:?}", particles.iter().map(|p| p.mass).collect::<Vec<f64>>()).as_str(), 10);
             text_line(format!("TRAILS: {:?}", particles.iter().map(|p| p.trail.len()).sum::<usize>()).as_str(), 11);
             text_line(format!("SPEED: {}", time_speed).as_str(), 12);
             text_line(format!("UPDATE STEPS: {}", n_updates).as_str(), 13);
-            text_line(format!("N INIT NEW PARTICLES: {}", n_init_on_step).as_str(), 14);
+            // text_line(format!("N INIT NEW PARTICLES: {}", n_init_on_step).as_str(), 14);
             text_line(format!("N RETAINED: {}", retain_count).as_str(), 15);
         }
 
