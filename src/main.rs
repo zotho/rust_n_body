@@ -10,7 +10,7 @@ use itertools::Itertools;
 // use rand::Rng;
 
 #[cfg(feature = "raindow_trail")]
-const COLORS: [Color; 25] = [LIGHTGRAY, GRAY, DARKGRAY, YELLOW, GOLD, ORANGE, PINK, RED, MAROON, GREEN, LIME, DARKGREEN, SKYBLUE, BLUE, DARKBLUE, PURPLE, VIOLET, DARKPURPLE, BEIGE, BROWN, DARKBROWN, WHITE, BLACK, BLANK, MAGENTA];
+const COLORS: [Color; 23] = [LIGHTGRAY, DARKGRAY, YELLOW, GOLD, ORANGE, PINK, RED, MAROON, GREEN, LIME, DARKGREEN, SKYBLUE, BLUE, DARKBLUE, PURPLE, VIOLET, DARKPURPLE, BEIGE, BROWN, DARKBROWN, WHITE, BLACK, MAGENTA];
 
 // const NANO_MULT: f64 = 1000000000.0;
 
@@ -39,11 +39,35 @@ fn text_line(string: &str, line_no: u8) {
     draw_text(string, 10.0 , 5.0 + 25.0 * (line_no - 1) as f32, 25.0, BLACK);
 }
 
+#[derive(Copy, Clone)]
+struct TrailPoint {
+    pos: Vector2<f64>,
+    size: f32,
+    keep: bool,
+}
+
+impl TrailPoint {
+    fn new(pos: Vector2<f64>, size: f32, keep: bool) -> TrailPoint {
+        TrailPoint {
+            pos: pos,
+            size: size,
+            keep: keep,
+        }
+    }
+}
+
+impl From<TrailPoint> for (Vector2<f64>, f32, bool) {
+    fn from(e: TrailPoint) -> (Vector2<f64>, f32, bool) {
+        let TrailPoint { pos, size, keep } = e;
+        (pos, size, keep)
+    }
+}
+
 struct Particle {
     pos: Vector2<f64>,
     vel: Vector2<f64>,
     mass: f64,
-    trail: VecDeque<(Vector2<f64>, f32, bool)>,
+    trail: VecDeque<TrailPoint>,
 }
 
 impl Particle {
@@ -65,11 +89,12 @@ impl Particle {
             let trail_len = self.trail.len();
             if trail_len > TRAIL_END {
                 for i in 1..trail_len {
-                    let ([x1, y1], _, _) = self.trail[i - 1];
-                    let ([x2, y2], s2, _) = self.trail[i];
+                    let [x1, y1] = self.trail[i - 1].pos;
+                    let [x2, y2] = self.trail[i].pos;
     
                     if i == TRAIL_END {
-                        draw_poly(x2 as f32, y2 as f32, self.sides(), s2, 0.0, WHITE);
+                        let size = self.trail[i].size;
+                        draw_poly(x2 as f32, y2 as f32, self.sides(), size, 0.0, WHITE);
                         break;
                     }
     
@@ -83,8 +108,8 @@ impl Particle {
     fn draw_trail(self: &Self) {
         let len = self.trail.len();
         for i in 1..len {
-            let ([x1, y1], _, _) = self.trail[i - 1];
-            let ([x2, y2], _, _) = self.trail[i];
+            let [x1, y1] = self.trail[i - 1].pos;
+            let [x2, y2] = self.trail[i].pos;
 
             draw_line(x1 as f32, y1 as f32, x2 as f32, y2 as f32, 2.0, COLORS[(len - i) % COLORS.len()]);
         }
@@ -94,8 +119,8 @@ impl Particle {
     fn draw_trail(self: &Self) {
         let len = self.trail.len();
         for i in 1..len {
-            let ([x1, y1], _, _) = self.trail[i - 1];
-            let ([x2, y2], _, _) = self.trail[i];
+            let [x1, y1] = self.trail[i - 1].pos;
+            let [x2, y2] = self.trail[i].pos;
 
             draw_line(x1 as f32, y1 as f32, x2 as f32, y2 as f32, 1.0, RED);
         }
@@ -108,27 +133,38 @@ impl Particle {
         // let mut last_retain = 0;
         for j in 10..n_iter {
             let i = j * 2;
-            let ([x0, y0], _, _) = self.trail[i - 2];
-            let ([x1, y1], _, _) = self.trail[i - 1];
-            let ([x2, y2], _, _) = self.trail[i];
+            let [x0, y0] = self.trail[i - 2].pos;
+            let [x1, y1] = self.trail[i - 1].pos;
+            let [x2, y2] = self.trail[i].pos;
             let d0 = vec2(x1 as f32 - x0 as f32, y1 as f32 - y0 as f32);
             let d1 = vec2(x2 as f32 - x1 as f32, y2 as f32 - y1 as f32);
 
             let (l0, l1) = (d0.length(), d1.length());
-            let prod = d0.dot(d1) / (l0 * l1);
+            let prod = d0.dot(d1);
+            let angle_cos = prod / (l0 * l1);
 
-            let sum = (l0 + l1) / 3.0;
+            let sum = l0 + l1;
 
-            let need_retain = prod > 0.99 && l0 > sum && l1 > sum && sum < 10.0;
+            let (collinear_factor, max_len) = match i {
+                i if i > 10000 => (0.8, 300.0),
+                i if i > 1000 => (0.9, 100.0),
+                i if i > 100 => (0.99, 30.0),
+                _ => (0.999, 10.0),
+            };
+
+            let collinear = angle_cos > collinear_factor;
+            // let equal_len = l0 > sum / 3.0 && l1 > sum / 3.0;
+            let not_very_large = sum < max_len;
+            let need_retain = collinear && not_very_large;
             if need_retain {
                 // last_retain = i;
                 retain_total += 1;
             }
-            self.trail[i - 1].2 = !need_retain;
+            self.trail[i - 1].keep = !need_retain;
         }
         // println!("{:}\n", std::str::from_utf8(self.trail.iter().map(|(_, _, r)| if *r {43} else {45}).collect::<Vec<u8>>().as_slice()).unwrap());
         // println!("{:>5}/{:>5}", last_retain, self.trail.len());
-        self.trail.retain(|(_, _, retain)| *retain);
+        self.trail.retain(|trail_point| trail_point.keep);
 
         retain_total
     }
@@ -136,7 +172,7 @@ impl Particle {
     fn update_pos(self: &mut Self, dt: f64) {
         self.pos = vec2_add(self.pos, vec2_scale(self.vel, dt));
         let size = self.size();
-        self.trail.push_front((self.pos, size, true));
+        self.trail.push_front(TrailPoint::new(self.pos, size, true));
     }
 
     fn size(self: &Self) -> f32 {
