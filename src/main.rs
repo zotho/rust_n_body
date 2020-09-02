@@ -22,6 +22,7 @@ const TRAIL_END: usize = 100;
 const G: f64 = 1000.0;
 const GRAV_POWER: i32 = 3;
 
+const MAX_COORD: f32 = 1000.0;
 const MAX_INV_LEN: f64 = 1.0;
 
 // const FIXED_DT: bool = true;
@@ -124,13 +125,13 @@ impl Particle {
                 for i in 1..trail_len {
                     let [x1, y1] = self.trail[i - 1].pos;
                     let [x2, y2] = self.trail[i].pos;
-    
+
                     if i == TRAIL_END {
                         let size = self.trail[i].size;
                         draw_poly(x2 as f32, y2 as f32, self.sides(), size, 0.0, WHITE);
                         break;
                     }
-    
+
                     draw_line(x1 as f32, y1 as f32, x2 as f32, y2 as f32, 1.0, RED);
                 }
             }
@@ -230,7 +231,7 @@ async fn main() {
     let mut mouse_vel;
 
     // let mut n_init_on_step: usize = 0;
-    
+
     let mut n_updates: usize = 100;
     let mut time_speed: f64 = 1.0;
 
@@ -239,7 +240,7 @@ async fn main() {
     let init_size = 50;
     let init_speed = 20.0;
     let init_radius = 100.0;
-    
+
     let mut particles = Vec::with_capacity(init_size);
 
     for i in 0..init_size {
@@ -341,11 +342,11 @@ async fn main() {
             (0..particles.len()).tuple_combinations().for_each(|(i1, i2)| {
                 let (part1, part2) = particles.split_at_mut(i2);
                 let (p1, p2) = (&mut part1[i1], &mut part2[0]);
-    
+
                 if p1.mass < 0.0 || p2.mass < 0.0 {
                     return
                 }
-    
+
                 let d12 = vec2_sub(p2.pos, p1.pos);
                 let inv_len = vec2_inv_len(d12);
                 if inv_len * (p1.mass * p2.mass).powf(1.0 / GRAV_POWER as f64) > MAX_INV_LEN {
@@ -360,15 +361,20 @@ async fn main() {
                 }
             });
             particles_time_vel += get_time() - particles_now_vel;
-    
-            particles.retain(|p| {
-                let [x, y] = p.pos;
-                p.mass > 0.0 && x > -1000.0 && x < width as f64 + 1000.0 && y > -1000.0 && y < height as f64 + 1000.0
+
+            particles.retain(|particle| {
+                let [x, y] = particle.pos;
+                let (x, y) = (x as f32, y as f32);
+                particle.mass > 0.0 &&
+                    x > -MAX_COORD &&
+                    x < width + MAX_COORD &&
+                    y > -MAX_COORD &&
+                    y < height + MAX_COORD
             });
-    
+
             particles.iter_mut().for_each(|p| {
                 p.update_pos(current_dt);
-                // p.vel = vec2_scale(p.vel, 1.0001);
+                // p.vel = vec2_scale(p.vel, 0.99999);
             });
         }
 
