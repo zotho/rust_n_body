@@ -12,7 +12,7 @@ use itertools::Itertools;
 #[cfg(feature = "raindow_trail")]
 const COLORS: [Color; 23] = [LIGHTGRAY, DARKGRAY, YELLOW, GOLD, ORANGE, PINK, RED, MAROON, GREEN, LIME, DARKGREEN, SKYBLUE, BLUE, DARKBLUE, PURPLE, VIOLET, DARKPURPLE, BEIGE, BROWN, DARKBROWN, WHITE, BLACK, MAGENTA];
 
-// const NANO_MULT: f64 = 1000000000.0;
+const MICRO_MULT: f64 = 1000000.0;
 
 const DRAW_END: bool = true;
 const TRAIL_END: usize = 100;
@@ -37,6 +37,39 @@ fn lerp_mass_vec(v1: Vector2<f64>, v2: Vector2<f64>, m1: f64, m2: f64) -> Vector
 
 fn text_line(string: &str, line_no: u8) {
     draw_text(string, 10.0 , 5.0 + 25.0 * (line_no - 1) as f32, 25.0, BLACK);
+}
+
+#[cfg(feature = "tail_area_optimize")]
+fn triangle_area(length1: f32, length2: f32, angle_sin: f32) -> f32 {
+    length1 * length2 * angle_sin / 2.0
+}
+
+#[cfg(feature = "tail_area_optimize")]
+fn need_retain(l0: f32, l1: f32, _: usize, angle_cos: f32) -> bool {
+    if angle_cos < 0.8 {
+        return false;
+    }
+    let angle_sin = (1.0 - angle_cos.powi(2)).sqrt();
+
+    triangle_area(l0, l1, angle_sin) < 5.0
+}
+
+#[cfg(not(feature = "tail_area_optimize"))]
+fn need_retain(l0: f32, l1: f32, i: usize, angle_cos: f32) -> bool {
+    let sum = l0 + l1;
+
+    let (collinear_factor, max_len) = match i {
+        i if i > 10000 => (0.8, 300.0),
+        i if i > 1000 => (0.9, 100.0),
+        i if i > 100 => (0.99, 30.0),
+        _ => (0.999, 10.0),
+    };
+
+    let collinear = angle_cos > collinear_factor;
+    // let equal_len = l0 > sum / 3.0 && l1 > sum / 3.0;
+    let not_very_large = sum < max_len;
+    let need_retain = collinear && not_very_large;
+    need_retain
 }
 
 #[derive(Copy, Clone)]
@@ -127,11 +160,12 @@ impl Particle {
     }
 
     fn optimize_trail(self: &mut Self) -> usize {
+        let start_retain = 40;
         let n_iter = self.trail.len() / 2;
 
         let mut retain_total = 0;
         // let mut last_retain = 0;
-        for j in 10..n_iter {
+        for j in (start_retain / 2)..n_iter {
             let i = j * 2;
             let [x0, y0] = self.trail[i - 2].pos;
             let [x1, y1] = self.trail[i - 1].pos;
@@ -141,28 +175,16 @@ impl Particle {
 
             let (l0, l1) = (d0.length(), d1.length());
             let prod = d0.dot(d1);
-            let angle_cos = prod / (l0 * l1);
+            let angle_cos = (prod / (l0 * l1)).min(1.0).max(-1.0);
 
-            let sum = l0 + l1;
+            let need_retain = need_retain(l0, l1, i, angle_cos);
 
-            let (collinear_factor, max_len) = match i {
-                i if i > 10000 => (0.8, 300.0),
-                i if i > 1000 => (0.9, 100.0),
-                i if i > 100 => (0.99, 30.0),
-                _ => (0.999, 10.0),
-            };
-
-            let collinear = angle_cos > collinear_factor;
-            // let equal_len = l0 > sum / 3.0 && l1 > sum / 3.0;
-            let not_very_large = sum < max_len;
-            let need_retain = collinear && not_very_large;
             if need_retain {
                 // last_retain = i;
                 retain_total += 1;
             }
             self.trail[i - 1].keep = !need_retain;
         }
-        // println!("{:}\n", std::str::from_utf8(self.trail.iter().map(|(_, _, r)| if *r {43} else {45}).collect::<Vec<u8>>().as_slice()).unwrap());
         // println!("{:>5}/{:>5}", last_retain, self.trail.len());
         self.trail.retain(|trail_point| trail_point.keep);
 
@@ -186,7 +208,7 @@ impl Particle {
 
 fn window_conf() -> Conf {
     Conf {
-        // fullscreen: true,
+        fullscreen: true,
         window_width: 1920,
         window_height: 1080,
         ..Default::default()
@@ -292,7 +314,7 @@ async fn main() {
             }
         }
 
-        // let particles_now = Instant::now();
+        let particles_time = get_time();
 
         // for _ in 0..n_init_on_step {
             // let mut p = Particle::new();
@@ -306,7 +328,7 @@ async fn main() {
         // let (x, y) = mouse_pos;
         // draw_circle(x, y, 10.0, WHITE);
 
-        // let mut particles_time_vel = 0;
+        let mut particles_time_vel = 0.0;
         for _ in 0..n_updates {
             let current_dt;
             // if FIXED_DT {
@@ -315,7 +337,7 @@ async fn main() {
                 // current_dt = dt * time_speed / n_updates as f64;
             // }
 
-            // let particles_now_vel = Instant::now();
+            let particles_now_vel = get_time();
             (0..particles.len()).tuple_combinations().for_each(|(i1, i2)| {
                 let (part1, part2) = particles.split_at_mut(i2);
                 let (p1, p2) = (&mut part1[i1], &mut part2[0]);
@@ -337,7 +359,7 @@ async fn main() {
                     p2.vel = vec2_add(p2.vel, vec2_scale(a, -current_dt * p1.mass));
                 }
             });
-            // particles_time_vel += particles_now_vel.elapsed().as_micros();
+            particles_time_vel += get_time() - particles_now_vel;
     
             particles.retain(|p| {
                 let [x, y] = p.pos;
@@ -350,37 +372,39 @@ async fn main() {
             });
         }
 
-        // let particles_now_retain = Instant::now();
+        let particles_time_retain = get_time();
         let mut retain_count = 0;
         particles.iter_mut().for_each(|p| {
             retain_count += p.optimize_trail();
         });
-        // let particles_time_retain = particles_now_retain.elapsed().as_micros();
+        let particles_time_retain = get_time() - particles_time_retain;
 
-        // let particles_now_trail = Instant::now();
+        let particles_time_trail = get_time();
         particles.iter().for_each(|p| {
             p.draw_trail();
         });
-        // let particles_time_trail = particles_now_trail.elapsed().as_micros();
+        let particles_time_trail = get_time() - particles_time_trail;
 
-        // let particles_now_draw = Instant::now();
+        let particles_time_draw = get_time();
         particles.iter().for_each(|p| {
             p.draw();
         });
-        // let particles_time_draw = particles_now_draw.elapsed().as_micros();
+        let particles_time_draw = get_time() - particles_time_draw;
 
-        // let particles_time = particles_now.elapsed().as_micros();
+        let particles_time = get_time() - particles_time;
+
+        let all_time = get_frame_time() as f64;
 
         if draw_debug {
             text_line(format!("N PARTICLES: {}", particles.len()).as_str(), 1);
             text_line(format!("FPS: {}", get_fps()).as_str(), 2);
-            // text_line(format!("ALL TIME:  {:>7}", nanoseconds as u128 / 1000).as_str(), 3);
-            // text_line(format!("PARTICLES: {:>7}", particles_now).as_str(), 4);
-            // text_line(format!("         - {:>7} grav   ({:.3} part)", particles_time_vel, particles_time_vel as f32 / particles_time as f32).as_str(), 5);
-            // text_line(format!("         - {:>7} retain ({:.3} part)", particles_time_retain, particles_time_retain as f32 / particles_time as f32).as_str(), 6);
-            // text_line(format!("         - {:>7} trail  ({:.3} part)", particles_time_trail, particles_time_trail as f32 / particles_time as f32).as_str(), 7);
-            // text_line(format!("         - {:>7} draw   ({:.3} part)", particles_time_draw, particles_time_draw as f32 / particles_time as f32).as_str(), 8);
-            // text_line(format!("REST:      {:>7}", (nanoseconds as u128  / 1000).checked_sub(particles_time).unwrap_or(0)).as_str(), 9);
+            text_line(format!("ALL TIME:  {:>7.0}", all_time * MICRO_MULT).as_str(), 3);
+            text_line(format!("PARTICLES: {:>7.0}", particles_time.min(all_time) * MICRO_MULT).as_str(), 4);
+            text_line(format!("         - {:>7.0} grav   ({:.3} part)", particles_time_vel * MICRO_MULT, particles_time_vel / particles_time ).as_str(), 5);
+            text_line(format!("         - {:>7.0} retain ({:.3} part)", particles_time_retain * MICRO_MULT, particles_time_retain / particles_time).as_str(), 6);
+            text_line(format!("         - {:>7.0} trail  ({:.3} part)", particles_time_trail * MICRO_MULT, particles_time_trail / particles_time).as_str(), 7);
+            text_line(format!("         - {:>7.0} draw   ({:.3} part)", particles_time_draw * MICRO_MULT, particles_time_draw / particles_time).as_str(), 8);
+            text_line(format!("REST:      {:>7.0}", (all_time - particles_time).max(0.0) * MICRO_MULT).as_str(), 9);
             text_line(format!("MASSES: {:?}", particles.iter().map(|p| p.mass).collect::<Vec<f64>>()).as_str(), 10);
             text_line(format!("TRAILS: {:?}", particles.iter().map(|p| p.trail.len()).sum::<usize>()).as_str(), 11);
             text_line(format!("SPEED: {}", time_speed).as_str(), 12);

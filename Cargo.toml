@@ -8,6 +8,7 @@ edition = "2018"
 
 [features]
 raindow_trail = []
+tail_area_optimize = []
 
 [dependencies]
 #macroquad = { git="https://github.com/not-fl3/macroquad.git" }
