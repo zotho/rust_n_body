@@ -9,10 +9,10 @@ edition = "2018"
 [features]
 raindow_trail = []
 tail_area_optimize = []
+draw_lines = []
 
 [dependencies]
 #macroquad = { git="https://github.com/not-fl3/macroquad.git" }
 macroquad = { path="../macroquad_simple_lines" }
 vecmath = "1.0.0"
 itertools = "0.9"
-rand = "0.7"

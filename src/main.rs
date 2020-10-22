@@ -1,13 +1,10 @@
-// extern crate rand;
-
-// use std::time::{Instant};
 use std::ops::{Add, Sub, Mul};
 use std::collections::vec_deque::VecDeque;
 
 use macroquad::*;
 use vecmath::*;
 use itertools::Itertools;
-// use rand::Rng;
+
 
 #[cfg(feature = "raindow_trail")]
 const COLORS: [Color; 23] = [LIGHTGRAY, DARKGRAY, YELLOW, GOLD, ORANGE, PINK, RED, MAROON, GREEN, LIME, DARKGREEN, SKYBLUE, BLUE, DARKBLUE, PURPLE, VIOLET, DARKPURPLE, BEIGE, BROWN, DARKBROWN, WHITE, BLACK, MAGENTA];
@@ -46,17 +43,22 @@ fn triangle_area(length1: f32, length2: f32, angle_sin: f32) -> f32 {
 }
 
 #[cfg(feature = "tail_area_optimize")]
-fn need_retain(l0: f32, l1: f32, _: usize, angle_cos: f32) -> bool {
-    if angle_cos < 0.8 {
-        return false;
-    }
+fn need_retain(l0: f32, l1: f32, _: usize, angle_cos: f32, retained_area: f32) -> (bool, f32) {
+    // if angle_cos < 0.8 {
+        // return (false, 0.0);
+    // }
     let angle_sin = (1.0 - angle_cos.powi(2)).sqrt();
+    let area = triangle_area(l0, l1, angle_sin);
 
-    triangle_area(l0, l1, angle_sin) < 5.0
+    if area + retained_area < 2.0 {
+        (true, area)
+    } else {
+        (false, 0.0)
+    }
 }
 
 #[cfg(not(feature = "tail_area_optimize"))]
-fn need_retain(l0: f32, l1: f32, i: usize, angle_cos: f32) -> bool {
+fn need_retain(l0: f32, l1: f32, i: usize, angle_cos: f32, _: f32) -> (bool, f32) {
     let sum = l0 + l1;
 
     let (collinear_factor, max_len) = match i {
@@ -70,7 +72,7 @@ fn need_retain(l0: f32, l1: f32, i: usize, angle_cos: f32) -> bool {
     // let equal_len = l0 > sum / 3.0 && l1 > sum / 3.0;
     let not_very_large = sum < max_len;
     let need_retain = collinear && not_very_large;
-    need_retain
+    (need_retain, 0.0)
 }
 
 #[derive(Copy, Clone)]
@@ -78,6 +80,7 @@ struct TrailPoint {
     pos: Vector2<f64>,
     size: f32,
     keep: bool,
+    area: f32,
 }
 
 impl TrailPoint {
@@ -86,14 +89,15 @@ impl TrailPoint {
             pos: pos,
             size: size,
             keep: keep,
+            area: 0.0,
         }
     }
 }
 
-impl From<TrailPoint> for (Vector2<f64>, f32, bool) {
-    fn from(e: TrailPoint) -> (Vector2<f64>, f32, bool) {
-        let TrailPoint { pos, size, keep } = e;
-        (pos, size, keep)
+impl From<TrailPoint> for (Vector2<f64>, f32, bool, f32) {
+    fn from(e: TrailPoint) -> (Vector2<f64>, f32, bool, f32) {
+        let TrailPoint { pos, size, keep, area } = e;
+        (pos, size, keep, area)
     }
 }
 
@@ -140,19 +144,32 @@ impl Particle {
 
     #[cfg(feature = "raindow_trail")]
     fn draw_trail(self: &Self) {
-        let len = self.trail.len();
-        for i in 1..len {
-            let [x1, y1] = self.trail[i - 1].pos;
-            let [x2, y2] = self.trail[i].pos;
+        
+        #[cfg(not(feature = "draw_lines"))]
+        {
+            let len = self.trail.len();
+            for i in (1..len).rev() {
+                let [x1, y1] = self.trail[i - 1].pos;
+                let [x2, y2] = self.trail[i].pos;
 
-            draw_line(x1 as f32, y1 as f32, x2 as f32, y2 as f32, 2.0, COLORS[(len - i) % COLORS.len()]);
+                draw_line(x1 as f32, y1 as f32, x2 as f32, y2 as f32, 2.0, COLORS[(len - i) % COLORS.len()]);
+            }
+        }
+        
+        #[cfg(feature = "draw_lines")]
+        {
+            let points = self.trail.iter().map(|p| {
+                let [x, y] = p.pos;
+                (x as f32, y as f32)
+            }).collect::<Vec<(f32, f32)>>();
+            draw_lines(points, 2.0, RED);
         }
     }
 
     #[cfg(not(feature = "raindow_trail"))]
     fn draw_trail(self: &Self) {
         let len = self.trail.len();
-        for i in 1..len {
+        for i in (1..len).rev() {
             let [x1, y1] = self.trail[i - 1].pos;
             let [x2, y2] = self.trail[i].pos;
 
@@ -161,7 +178,7 @@ impl Particle {
     }
 
     fn optimize_trail(self: &mut Self) -> usize {
-        let start_retain = 40;
+        let start_retain = 2;
         let n_iter = self.trail.len() / 2;
 
         let mut retain_total = 0;
@@ -178,13 +195,17 @@ impl Particle {
             let prod = d0.dot(d1);
             let angle_cos = (prod / (l0 * l1)).min(1.0).max(-1.0);
 
-            let need_retain = need_retain(l0, l1, i, angle_cos);
+            let (need_retain, retained_area) = need_retain(l0, l1, i, angle_cos, self.trail[i - 1].area);
 
             if need_retain {
                 // last_retain = i;
+                let total_area = self.trail[i - 1].area + retained_area;
+                self.trail[i - 1].area += total_area / 2.0;
+                self.trail[i - 1].area = 0.0;
+                self.trail[i - 1].area += total_area / 2.0;
+                self.trail[i - 1].keep = false;
                 retain_total += 1;
             }
-            self.trail[i - 1].keep = !need_retain;
         }
         // println!("{:>5}/{:>5}", last_retain, self.trail.len());
         self.trail.retain(|trail_point| trail_point.keep);
@@ -230,27 +251,34 @@ async fn main() {
     let mut mouse_pos_prev;
     let mut mouse_vel;
 
-    // let mut n_init_on_step: usize = 0;
+    let mut n_init_on_step: usize = 0;
 
-    let mut n_updates: usize = 100;
+    let mut n_updates: usize = 400;
     let mut time_speed: f64 = 1.0;
 
     let mut draw_debug = false;
 
-    let init_size = 50;
-    let init_speed = 20.0;
-    let init_radius = 100.0;
+    let init_size = 200;
+    let init_speed = 40.0;
+    let init_radius = 300.0;
 
     let mut particles = Vec::with_capacity(init_size);
 
+    let (cw, ch) = (width as f64 / 2.0, height as f64 / 2.0);
+    
     for i in 0..init_size {
         let k = i as f64 / init_size as f64 * 2.0 * std::f64::consts::PI;
 
         let mut p = Particle::new();
-        p.pos = [k.cos() * init_radius + width as f64 / 2.0, k.sin() * init_radius + height as f64 / 2.0];
+        p.pos = [k.cos() * init_radius + cw, k.sin() * init_radius + ch];
         p.vel = [(k + std::f64::consts::PI / 2.0).cos() * init_speed, (k + std::f64::consts::PI / 2.0).sin() * init_speed];
         particles.push(p);
     }
+
+    let mut p = Particle::new();
+    p.pos = [cw, ch];
+    p.mass = 170.0;
+    particles.push(p);
 
     loop {
         width = screen_width();
@@ -286,12 +314,12 @@ async fn main() {
         if is_key_down(KeyCode::Up) {
             n_updates += 1;
         }
-        // if is_key_down(KeyCode::Minus) {
-            // n_init_on_step = 0.max(n_init_on_step - 1);
-        // }
-        // if is_key_down(KeyCode::Equal) {
-            // n_init_on_step += 1;
-        // }
+        if is_key_pressed(KeyCode::Minus) {
+            n_init_on_step = 0.max(n_init_on_step - 1);
+        }
+        if is_key_pressed(KeyCode::Equal) {
+            n_init_on_step += 1;
+        }
         if is_key_pressed(KeyCode::D) {
             draw_debug = !draw_debug;
         }
@@ -317,12 +345,17 @@ async fn main() {
 
         let particles_time = get_time();
 
-        // for _ in 0..n_init_on_step {
-            // let mut p = Particle::new();
-            // p.pos = [rng.gen_range(0.0, width as f64), rng.gen_range(0.0, height as f64)];
-            // p.vel = [rng.gen_range(-200.0, 200.0), rng.gen_range(-200.0, 200.0)];
-            // particles.push(p);
-        // }
+        let vel_range = 50.0;
+        for _ in 0..n_init_on_step {
+            let mut p = Particle::new();
+            p.pos = [rand::gen_range(0.0, width as f64), rand::gen_range(0.0, height as f64)];
+            p.vel = [
+                rand::gen_range(-vel_range, vel_range),
+                rand::gen_range(-vel_range, vel_range),
+            ];
+            p.mass = 10.0;
+            particles.push(p);
+        }
 
         clear_background(GRAY);
 
@@ -374,7 +407,9 @@ async fn main() {
 
             particles.iter_mut().for_each(|p| {
                 p.update_pos(current_dt);
-                // p.vel = vec2_scale(p.vel, 0.99999);
+                // p.vel = vec2_scale(p.vel, 1.000001);
+                // p.pos = vec2_scale(p.pos, 1.000001);
+                p.mass = p.mass.min(p.mass.powf(0.9999999));
             });
         }
 
@@ -415,7 +450,7 @@ async fn main() {
             text_line(format!("TRAILS: {:?}", particles.iter().map(|p| p.trail.len()).sum::<usize>()).as_str(), 11);
             text_line(format!("SPEED: {}", time_speed).as_str(), 12);
             text_line(format!("UPDATE STEPS: {}", n_updates).as_str(), 13);
-            // text_line(format!("N INIT NEW PARTICLES: {}", n_init_on_step).as_str(), 14);
+            text_line(format!("N INIT NEW PARTICLES: {}", n_init_on_step).as_str(), 14);
             text_line(format!("N RETAINED: {}", retain_count).as_str(), 15);
         }
 
