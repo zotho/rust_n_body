@@ -200,9 +200,9 @@ impl Particle {
             if need_retain {
                 // last_retain = i;
                 let total_area = self.trail[i - 1].area + retained_area;
-                self.trail[i - 1].area += total_area / 2.0;
+                self.trail[i - 2].area += total_area / 2.0;
                 self.trail[i - 1].area = 0.0;
-                self.trail[i - 1].area += total_area / 2.0;
+                self.trail[i].area += total_area / 2.0;
                 self.trail[i - 1].keep = false;
                 retain_total += 1;
             }
